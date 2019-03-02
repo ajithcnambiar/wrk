@@ -36,9 +36,11 @@ static struct http_parser_settings parser_settings = {
 };
 
 static volatile sig_atomic_t stop = 0;
+static volatile sig_atomic_t hardtimeout = 0;
 
 static void handler(int sig) {
     stop = 1;
+    hardtimeout = 1;
 }
 
 static void usage() {
@@ -56,6 +58,12 @@ static void usage() {
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
            "  Time arguments may include a time unit (2s, 2m, 2h)\n");
+}
+
+void* sleepThreadFn(void* ptr){
+    int i = (int) ptr;
+    sleep(i);
+    hardtimeout = 1;
 }
 
 int main(int argc, char **argv) {
@@ -88,7 +96,9 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT,  SIG_IGN);
 
+    // Millisecond_refactor
     statistics.latency  = stats_alloc(cfg.timeout * 1000);
+    //statistics.latency = stats_alloc(cfg.timeout);
     statistics.requests = stats_alloc(MAX_THREAD_RATE_S);
     thread *threads     = zcalloc(cfg.threads * sizeof(thread));
 
@@ -105,6 +115,8 @@ int main(int argc, char **argv) {
         thread *t      = &threads[i];
         t->loop        = aeCreateEventLoop(10 + cfg.connections * 3);
         t->connections = cfg.connections / cfg.threads;
+        t->request_count = 0;
+        t->response_count = 0;
 
         t->L = script_create(cfg.script, url, headers);
         script_init(L, t, argc - optind, &argv[optind]);
@@ -146,6 +158,14 @@ int main(int argc, char **argv) {
     sleep(cfg.duration);
     stop = 1;
 
+    uint64_t runtime_stop = time_us() - start;
+    char *runtime_stop_msg = format_time_us(runtime_stop);
+    printf("Stopped writes at %s\n", runtime_stop_msg);
+    pthread_t sleepThread;
+    pthread_create(&sleepThread, NULL, *sleepThreadFn, 60);
+    //sleep(5 * cfg.duration);
+    //hardtimeout = 1;
+
     for (uint64_t i = 0; i < cfg.threads; i++) {
         thread *t = &threads[i];
         pthread_join(t->thread, NULL);
@@ -158,6 +178,9 @@ int main(int argc, char **argv) {
         errors.write   += t->errors.write;
         errors.timeout += t->errors.timeout;
         errors.status  += t->errors.status;
+        errors.status_200 += t->errors.status_200;
+
+        printf("req count  = %ld, res count = %ld lost = %ld\n", t->request_count, t->response_count, t->response_count - t->request_count);
     }
 
     uint64_t runtime_us = time_us() - start;
@@ -185,6 +208,8 @@ int main(int argc, char **argv) {
 
     if (errors.status) {
         printf("  Non-2xx or 3xx responses: %d\n", errors.status);
+    }else if (errors.status_200){
+        printf("  200 responses: %d\n", errors.status_200);
     }
 
     printf("Requests/sec: %9.2Lf\n", req_per_s);
@@ -225,7 +250,7 @@ void *thread_main(void *arg) {
     aeCreateTimeEvent(loop, RECORD_INTERVAL_MS, record_rate, thread, NULL);
 
     thread->start = time_us();
-    aeMain(loop);
+    aeMain(loop, thread);
 
     aeDeleteEventLoop(loop);
     zfree(thread->cs);
@@ -284,6 +309,7 @@ static int record_rate(aeEventLoop *loop, long long id, void *data) {
     }
 
     if (stop) aeStop(loop);
+    if (hardtimeout) aeHardTimeout(loop);
 
     return RECORD_INTERVAL_MS;
 }
@@ -325,13 +351,26 @@ static int response_complete(http_parser *parser) {
     connection *c = parser->data;
     thread *thread = c->thread;
     uint64_t now = time_us();
+
+    time_t t = time(NULL);
+    struct tm end_time = *localtime(&t);
+    
     int status = parser->status_code;
 
     thread->complete++;
     thread->requests++;
+    thread->response_count++;
 
-    if (status > 399) {
+    //if (status > 399) {
+    if (status != 200) {
         thread->errors.status++;
+        printf("non 200 status response log start\n");
+        printf("XSent time %d:%d:%d-%d:%d:%d\n", c->start_time.tm_year+1900, c->start_time.tm_mon+1, c->start_time.tm_mday, c->start_time.tm_hour, c->start_time.tm_min, c->start_time.tm_sec);
+        printf("Request: %s", c->request);
+        printf("XReceived time %d:%d:%d-%d:%d:%d\n", end_time.tm_year+1900, end_time.tm_mon+1, end_time.tm_mday, end_time.tm_hour, end_time.tm_min, end_time.tm_sec);
+        printf("non 200 status response log end\n");
+    }else{
+        thread->errors.status_200++;
     }
 
     if (c->headers.buffer) {
@@ -342,6 +381,13 @@ static int response_complete(http_parser *parser) {
 
     if (--c->pending == 0) {
         if (!stats_record(statistics.latency, now - c->start)) {
+            printf("Timeout Request *** Start ***\n\n");
+            printf("Sent time %d:%d:%d-%d:%d:%d\n", c->start_time.tm_year+1900, c->start_time.tm_mon+1, c->start_time.tm_mday, c->start_time.tm_hour, c->start_time.tm_min, c->start_time.tm_sec);
+
+            printf("Received time %d:%d:%d-%d:%d:%d\n", end_time.tm_year+1900, end_time.tm_mon+1, end_time.tm_mday, end_time.tm_hour, end_time.tm_min, end_time.tm_sec);
+
+            printf("Request: %s", c->request);
+            printf("Timeout Request *** End ***\n\n");
             thread->errors.timeout++;
         }
         c->delayed = cfg.delay;
@@ -384,6 +430,10 @@ static void socket_connected(aeEventLoop *loop, int fd, void *data, int mask) {
 static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
     connection *c = data;
     thread *thread = c->thread;
+    if (stop){
+       // printf("write ignored request count = %lld, response count = %lld\n", thread->request_count, thread->response_count);
+        return;
+    }
 
     if (c->delayed) {
         uint64_t delay = script_delay(thread->L);
@@ -397,6 +447,8 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
             script_request(thread->L, &c->request, &c->length);
         }
         c->start   = time_us();
+        time_t t = time(NULL);
+        c->start_time = *localtime(&t);
         c->pending = cfg.pipeline;
     }
 
@@ -416,6 +468,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
         aeDeleteFileEvent(loop, fd, AE_WRITABLE);
     }
 
+    thread->request_count++;
     return;
 
   error:
@@ -511,6 +564,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
                 break;
             case 'T':
                 if (scan_time(optarg, &cfg->timeout)) return -1;
+                // Millisecond_refactor
                 cfg->timeout *= 1000;
                 break;
             case 'v':

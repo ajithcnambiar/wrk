@@ -25,20 +25,6 @@
 extern const char *VERSION;
 
 typedef struct {
-    pthread_t thread;
-    aeEventLoop *loop;
-    struct addrinfo *addr;
-    uint64_t connections;
-    uint64_t complete;
-    uint64_t requests;
-    uint64_t bytes;
-    uint64_t start;
-    lua_State *L;
-    errors errors;
-    struct connection *cs;
-} thread;
-
-typedef struct {
     char  *buffer;
     size_t length;
     char  *cursor;
@@ -54,6 +40,7 @@ typedef struct connection {
     SSL *ssl;
     bool delayed;
     uint64_t start;
+    struct tm start_time;
     char *request;
     size_t length;
     size_t written;

@@ -132,6 +132,10 @@ void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
 
+void aeHardTimeout(aeEventLoop *eventLoop) {
+    eventLoop->hardTimeout = 1;
+}
+
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
@@ -447,9 +451,14 @@ int aeWait(int fd, int mask, long long milliseconds) {
     }
 }
 
-void aeMain(aeEventLoop *eventLoop) {
+void aeMain(aeEventLoop *eventLoop, thread *t) {
     eventLoop->stop = 0;
-    while (!eventLoop->stop) {
+    eventLoop->hardTimeout = 0;
+    //while (!eventLoop->stop) {
+    //while(!eventLoop->hardTimeout && t->request_count > t->response_count){
+    while(true){
+        if (eventLoop->stop && t->request_count == t->response_count) break;
+        if (eventLoop->hardTimeout) break;
         if (eventLoop->beforesleep != NULL)
             eventLoop->beforesleep(eventLoop);
         aeProcessEvents(eventLoop, AE_ALL_EVENTS);

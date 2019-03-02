@@ -34,6 +34,8 @@
 #define __AE_H__
 
 #include <time.h>
+#include "lua.h"
+#include "stats.h"
 
 #define AE_OK 0
 #define AE_ERR -1
@@ -96,9 +98,27 @@ typedef struct aeEventLoop {
     aeFiredEvent *fired; /* Fired events */
     aeTimeEvent *timeEventHead;
     int stop;
+    int hardTimeout;
+    int all_requests_processed;
     void *apidata; /* This is used for polling API specific data */
     aeBeforeSleepProc *beforesleep;
 } aeEventLoop;
+
+typedef struct {
+    pthread_t thread;
+    aeEventLoop *loop;
+    struct addrinfo *addr;
+    uint64_t connections;
+    uint64_t complete;
+    uint64_t requests;
+    uint64_t bytes;
+    uint64_t start;
+    uint64_t request_count;
+    uint64_t response_count;
+    lua_State *L;
+    errors errors;
+    struct connection *cs;
+} thread;
 
 /* Prototypes */
 aeEventLoop *aeCreateEventLoop(int setsize);
@@ -114,7 +134,7 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
 int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id);
 int aeProcessEvents(aeEventLoop *eventLoop, int flags);
 int aeWait(int fd, int mask, long long milliseconds);
-void aeMain(aeEventLoop *eventLoop);
+void aeMain(aeEventLoop *eventLoop, thread *t);
 char *aeGetApiName(void);
 void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep);
 int aeGetSetSize(aeEventLoop *eventLoop);

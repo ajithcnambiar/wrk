@@ -12,6 +12,7 @@ typedef struct {
     uint32_t read;
     uint32_t write;
     uint32_t status;
+    uint32_t status_200;
     uint32_t timeout;
 } errors;
 
