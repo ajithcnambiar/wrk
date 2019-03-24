@@ -10,4 +10,3 @@ WORKDIR /StressTest
 COPY --from=builder /StressTest/wrk .
 RUN chmod +x wrk
 COPY request.lua .
-CMD [ "./wrk" ]

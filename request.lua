@@ -3,7 +3,6 @@ local counter = 1
 local threads = {}
 
 setup = function (thread)
-   io.write('test start at ' .. os.time() .. '\n')
     thread:set("id", counter)
     table.insert(threads, thread)
     counter = counter + 1
