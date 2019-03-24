@@ -61,9 +61,10 @@ static void usage() {
 }
 
 void* sleepThreadFn(void* ptr){
-    int i = (int) ptr;
-    sleep(i);
+    int* i = (int*) ptr;
+    sleep(*i);
     hardtimeout = 1;
+    return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -162,9 +163,14 @@ int main(int argc, char **argv) {
     char *runtime_stop_msg = format_time_us(runtime_stop);
     printf("Stopped writes at %s\n", runtime_stop_msg);
     pthread_t sleepThread;
-    pthread_create(&sleepThread, NULL, *sleepThreadFn, 60);
+    
+    int* hardTimeout = zmalloc(sizeof(int*));
+    *hardTimeout = 60;
+    pthread_create(&sleepThread, NULL, *sleepThreadFn, hardTimeout);
     //sleep(5 * cfg.duration);
     //hardtimeout = 1;
+
+    printf("Requests sent and response received status of each thread\n");
 
     for (uint64_t i = 0; i < cfg.threads; i++) {
         thread *t = &threads[i];
@@ -180,7 +186,7 @@ int main(int argc, char **argv) {
         errors.status  += t->errors.status;
         errors.status_200 += t->errors.status_200;
 
-        printf("req count  = %ld, res count = %ld lost = %ld\n", t->request_count, t->response_count, t->response_count - t->request_count);
+        printf("request count  = %"PRIu64", response count = %"PRIu64" lost responses = %"PRIu64"\n", t->request_count, t->response_count, t->request_count - t->response_count);
     }
 
     uint64_t runtime_us = time_us() - start;

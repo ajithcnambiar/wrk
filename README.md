@@ -3,6 +3,9 @@ This repo is forked from https://github.com/wg/wrk
 Below are the changes in the fork:
 1. Logs start time, end time, and request id for the requests that are timed out.
 2. Waits for 60 seconds after the test duration or until all the requests are back whichever is earlier.
+3. Dockerized the tool - commands to create image and run
+   docker build . -t <image_name>:<tag>
+   docker run --rm -it <image_name>:<tag> /bin/sh -c "/StressTest/wrk -c2 -d3 -t1 -s /StressTest/request.lua 'http://localhost:8080/'"
 
 # wrk - a HTTP benchmarking tool
 

@@ -17,7 +17,7 @@ request = function()
    count = count + 1
    wrk.headers["X-Request-Id"] = tostring(count) .. tostring( {} ):sub(8)
    request_ids[wrk.headers["X-Request-Id"]] = os.time()
-   return wrk.format(nil, 'https://localhost:9090/')
+   return wrk.format(nil, nil)
 end
 
 response = function(status, headers, body)
