@@ -1,3 +1,9 @@
+# Forked
+This repo is forked from https://github.com/wg/wrk
+Below are the changes in the fork:
+1. Logs start time, end time, and request id requests that are timed out.
+2. Waits for 60 seconds after the test duration.
+
 # wrk - a HTTP benchmarking tool
 
   wrk is a modern HTTP benchmarking tool capable of generating significant
